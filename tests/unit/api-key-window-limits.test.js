@@ -161,6 +161,54 @@ describe("API key window limits: migration and repository behavior", () => {
     expect(await db.validateApiKey(k.key)).toBe(true);
     expect(await db.validateApiKey("sk-unknown")).toBe(false);
   });
+
+  it("export and restore round-trips window limit fields", async () => {
+    writeV2Db(tempDir);
+    const { db } = await boot();
+
+    const created = await db.createApiKey("Spend Key", "m", null, {
+      limitMode: "spend",
+      limit5h: 2.5,
+      limit30d: 10,
+    });
+
+    const dump = await db.exportDb();
+    const exportedKey = dump.apiKeys.find((k) => k.id === created.id);
+    expect(exportedKey.limitMode).toBe("spend");
+    expect(exportedKey.limit5h).toBe(2.5);
+    expect(exportedKey.limit7d).toBeNull();
+    expect(exportedKey.limit30d).toBe(10);
+
+    const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-key-limits-fresh-"));
+    try {
+      try { global._dbAdapter?.instance?.close?.(); } catch {}
+      delete global._dbAdapter;
+      process.env.DATA_DIR = freshDir;
+      const { db: freshDb } = await boot();
+
+      await freshDb.importDb(dump);
+      const restored = await freshDb.getApiKeyById(created.id);
+      expect(restored.limitMode).toBe("spend");
+      expect(restored.limit5h).toBe(2.5);
+      expect(restored.limit7d).toBeNull();
+      expect(restored.limit30d).toBe(10);
+
+      const legacyDump = {
+        ...dump,
+        apiKeys: dump.apiKeys.map(({ limitMode, limit5h, limit7d, limit30d, ...rest }) => rest),
+      };
+      await freshDb.importDb(legacyDump);
+      const legacyRestored = await freshDb.getApiKeyById(created.id);
+      expect(legacyRestored.limitMode).toBe("count");
+      expect(legacyRestored.limit5h).toBeNull();
+      expect(legacyRestored.limit7d).toBeNull();
+      expect(legacyRestored.limit30d).toBeNull();
+    } finally {
+      try { global._dbAdapter?.instance?.close?.(); } catch {}
+      delete global._dbAdapter;
+      fs.rmSync(freshDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
