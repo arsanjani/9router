@@ -6,6 +6,7 @@ import {
   clearAccountError,
   extractApiKey,
   isValidApiKey,
+  checkKeyWindowLimit,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
@@ -80,6 +81,8 @@ export async function handleChat(request, clientRawRequest = null) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
+    const limitHit = await checkKeyWindowLimit(apiKey);
+    if (limitHit) return errorResponse(HTTP_STATUS.RATE_LIMITED, limitHit);
   }
 
   if (!modelStr) {

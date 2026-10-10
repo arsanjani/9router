@@ -32,6 +32,7 @@ export {
 // API keys
 export {
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
+  getKeyLimitState, limitStateMessage,
 } from "./repos/apiKeysRepo.js";
 
 // Combos
@@ -61,6 +62,7 @@ export {
 export {
   statsEmitter, trackPendingRequest, getActiveRequests,
   saveRequestUsage, getUsageHistory, getUsageStats, getChartData,
+  countKeyRequestsSince, sumKeySpendSince,
   appendRequestLog, getRecentLogs,
 } from "./repos/usageRepo.js";
 

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { countKeyRequestsSince, sumKeySpendSince } from "./usageRepo.js";
 import { keyAccessFromColumns, keyAccessToColumns } from "@/shared/utils/keyAccess.js";
 import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 
@@ -137,4 +138,46 @@ export async function validateApiKey(key) {
   const row = db.get(`SELECT isActive FROM apiKeys WHERE key = ?`, [key]);
   if (!row) return false;
   return row.isActive === 1 || row.isActive === true;
+}
+
+// Sliding-window enforcement. validateApiKey stays a boolean (expiration only);
+// this is its limit-checking sibling, called beside it at every /v1 gate.
+const WINDOWS = [
+  ["limit5h", 5 * 3600e3, "5h"],
+  ["limit7d", 7 * 86400e3, "7d"],
+  ["limit30d", 30 * 86400e3, "30d"],
+];
+
+/**
+ * @returns {Promise<{ok: true} | {ok: false, window: string, limit: number, used?: number, spend: boolean}>}
+ * Fail-open: an unreadable counter or key row allows the request (never throws).
+ */
+export async function getKeyLimitState(apiKey) {
+  try {
+    const db = await getAdapter();
+    const row = db.get(`SELECT limitMode, limit5h, limit7d, limit30d FROM apiKeys WHERE key = ?`, [apiKey]);
+    if (!row) return { ok: true };
+    const spend = (row.limitMode || "count") === "spend"; // unknown values fail safe into count
+    for (const [field, ms, label] of WINDOWS) {
+      const limit = row[field];
+      if (limit == null) continue; // NULL = unlimited
+      const since = new Date(Date.now() - ms).toISOString();
+      if (spend) {
+        const used = await sumKeySpendSince(apiKey, since);
+        if (used >= limit) return { ok: false, window: label, limit, used, spend: true };
+      } else if (await countKeyRequestsSince(apiKey, since) >= limit) {
+        return { ok: false, window: label, limit, spend: false };
+      }
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("window limit check failed-open", e);
+    return { ok: true };
+  }
+}
+
+export function limitStateMessage(state) {
+  return state.spend
+    ? `API key spend limit exceeded (${state.window}: max $${state.limit.toFixed(2)}, used $${state.used.toFixed(2)})`
+    : `API key request limit exceeded (${state.window}: max ${state.limit} requests)`;
 }
