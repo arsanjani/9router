@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -83,6 +83,14 @@ export const TABLES = {
       machineId: "TEXT",
       isActive: "INTEGER DEFAULT 1",
       createdAt: "TEXT NOT NULL",
+      // Per-key sliding-window limits: mode is 'count' (requests) or 'spend' ($ of
+      // usageHistory.cost); caps are the window size. NULL cap = unlimited, so every
+      // existing row keeps today's behavior. Additive columns, picked up by
+      // syncSchemaFromTables() on boot.
+      limitMode: "TEXT DEFAULT 'count'",
+      limit5h: "REAL",
+      limit7d: "REAL",
+      limit30d: "REAL",
       // Per-key access control. Additive columns, picked up by
       // syncSchemaFromTables() on boot; existing rows read as unrestricted (0).
       accessRestricted: "INTEGER DEFAULT 0",
@@ -131,6 +139,8 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
+      // Window-limit lookups: usageHistory rows are keyed by the full raw client key.
+      "CREATE INDEX IF NOT EXISTS idx_uh_apikey_ts ON usageHistory(apiKey, timestamp)",
     ],
   },
   usageDaily: {
