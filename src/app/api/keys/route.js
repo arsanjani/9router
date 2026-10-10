@@ -27,15 +27,28 @@ export async function POST(request) {
 
     // Always get machineId from server
     const machineId = await getConsistentMachineId();
-    const apiKey = await createApiKey(name, machineId);
+    const limits = {};
+    if (body.limitMode !== undefined) limits.limitMode = body.limitMode;
+    if (body.limit5h !== undefined) limits.limit5h = body.limit5h;
+    if (body.limit7d !== undefined) limits.limit7d = body.limit7d;
+    if (body.limit30d !== undefined) limits.limit30d = body.limit30d;
+
+    const apiKey = await createApiKey(name, machineId, limits);
 
     return NextResponse.json({
       key: apiKey.key,
       name: apiKey.name,
       id: apiKey.id,
       machineId: apiKey.machineId,
+      limitMode: apiKey.limitMode,
+      limit5h: apiKey.limit5h,
+      limit7d: apiKey.limit7d,
+      limit30d: apiKey.limit30d,
     }, { status: 201 });
   } catch (error) {
+    if (error.message?.startsWith("Invalid limit")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.log("Error creating key:", error);
     return NextResponse.json({ error: "Failed to create key" }, { status: 500 });
   }

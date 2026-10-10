@@ -494,3 +494,76 @@ describe("data quality: cost and cached_tokens survive per provider shape", () =
     }
   });
 });
+
+describe("REST CRUD: mode + window caps", () => {
+  async function apiPost(url, body) {
+    const { POST } = await import("@/app/api/keys/route.js");
+    const req = new Request(`http://localhost${url}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const res = await POST(req);
+    const json = await res.json().catch(() => ({}));
+    return { ...json, status: res.status };
+  }
+
+  async function apiPut(url, body) {
+    const { PUT } = await import("@/app/api/keys/[id]/route.js");
+    const id = url.split("/").pop();
+    const req = new Request(`http://localhost${url}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const res = await PUT(req, { params: Promise.resolve({ id }) });
+    const json = await res.json().catch(() => ({}));
+    const payload = json.key ? { ...json.key, status: res.status } : { ...json, status: res.status };
+    return payload;
+  }
+
+  it("POST/PUT persist mode + caps; empty string clears to unlimited", async () => {
+    writeV2Db(tempDir);
+    await boot();
+
+    const created = await apiPost("/api/keys", { name: "w", limitMode: "spend", limit5h: 1.5, limit7d: "", limit30d: 10 });
+    expect(created.status).toBe(201);
+    expect(created.limitMode).toBe("spend");
+    expect(created.limit5h).toBe(1.5);
+    expect(created.limit7d).toBeNull();
+    const updated = await apiPut(`/api/keys/${created.id}`, { limit5h: "" });
+    expect(updated.status).toBe(200);
+    expect(updated.limit5h).toBeNull();
+    expect(updated.limit30d).toBe(10); // untouched field preserved
+  });
+
+  it("rejects unknown mode and negative caps", async () => {
+    writeV2Db(tempDir);
+    await boot();
+
+    expect((await apiPost("/api/keys", { name: "x", limitMode: "points" })).status).toBe(400);
+    expect((await apiPost("/api/keys", { name: "y", limit5h: -1 })).status).toBe(400);
+    expect((await apiPut("/api/keys/k1", { limitMode: "points" })).status).toBe(400);
+    expect((await apiPut("/api/keys/k1", { limit5h: -1 })).status).toBe(400);
+  });
+
+  it("GET list and GET [id] expose mode and caps", async () => {
+    writeV2Db(tempDir);
+    await boot();
+    const { GET: getList } = await import("@/app/api/keys/route.js");
+    const { GET: getSingle } = await import("@/app/api/keys/[id]/route.js");
+
+    const created = await apiPost("/api/keys", { name: "g", limitMode: "spend", limit5h: 5 });
+    const listRes = await getList();
+    const listData = await listRes.json();
+    const found = listData.keys.find((k) => k.id === created.id);
+    expect(found.limitMode).toBe("spend");
+    expect(found.limit5h).toBe(5);
+
+    const singleRes = await getSingle(new Request(`http://localhost/api/keys/${created.id}`), { params: Promise.resolve({ id: created.id }) });
+    const singleData = await singleRes.json();
+    expect(singleData.key.limitMode).toBe("spend");
+    expect(singleData.key.limit5h).toBe(5);
+  });
+});
+
