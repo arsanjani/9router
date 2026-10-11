@@ -305,6 +305,7 @@
   "Cost": "Biaya",
   "Cost Calculation:": "Perhitungan Biaya:",
   "Costs": "Biaya",
+  "Limits": "Batas",
   "Costs are calculated based on token usage and pricing rates. Each request's cost is determined by: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)": "Biaya dihitung berdasarkan penggunaan token dan tarif penetapan harga. Biaya setiap permintaan ditentukan oleh: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)",
   "Could not read Cursor database automatically.": "Tidak dapat membaca database Cursor secara otomatis.",
   "Create": "Buat",

@@ -62,6 +62,37 @@ function formatExpiry(key) {
   };
 }
 
+const LIMIT_MODE_OPTIONS = [
+  { value: "count", label: "Requests only" },
+  { value: "spend", label: "Weighted usage ($)" },
+];
+
+function parseLimit(val) {
+  if (val === "" || val === null || val === undefined) return null;
+  if (typeof val === "string" && !val.trim()) return null;
+  const num = Number(val);
+  return Number.isFinite(num) ? num : val;
+}
+
+function formatLimits(key) {
+  if (!key) return "Unlimited";
+  const mode = key.limitMode === "spend" ? "spend" : "count";
+  const parts = [];
+  const formatVal = (v) => (mode === "spend" ? `$${Number(v).toFixed(2)}` : String(v));
+
+  if (key.limit5h !== null && key.limit5h !== undefined && key.limit5h !== "") {
+    parts.push(`${formatVal(key.limit5h)}/5h`);
+  }
+  if (key.limit7d !== null && key.limit7d !== undefined && key.limit7d !== "") {
+    parts.push(`${formatVal(key.limit7d)}/7d`);
+  }
+  if (key.limit30d !== null && key.limit30d !== undefined && key.limit30d !== "") {
+    parts.push(`${formatVal(key.limit30d)}/30d`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : "Unlimited";
+}
+
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,10 +100,18 @@ export default function APIPageClient({ machineId }) {
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
   const [newKeyCustomExpiry, setNewKeyCustomExpiry] = useState("");
+  const [newKeyLimitMode, setNewKeyLimitMode] = useState("count");
+  const [newKeyLimit5h, setNewKeyLimit5h] = useState("");
+  const [newKeyLimit7d, setNewKeyLimit7d] = useState("");
+  const [newKeyLimit30d, setNewKeyLimit30d] = useState("");
   const [editingKey, setEditingKey] = useState(null);
   const [editKeyName, setEditKeyName] = useState("");
   const [editKeyExpiryPreset, setEditKeyExpiryPreset] = useState("never");
   const [editKeyCustomExpiry, setEditKeyCustomExpiry] = useState("");
+  const [editKeyLimitMode, setEditKeyLimitMode] = useState("count");
+  const [editKeyLimit5h, setEditKeyLimit5h] = useState("");
+  const [editKeyLimit7d, setEditKeyLimit7d] = useState("");
+  const [editKeyLimit30d, setEditKeyLimit30d] = useState("");
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
@@ -668,11 +707,21 @@ export default function APIPageClient({ machineId }) {
     if (!newKeyName.trim()) return;
 
     const expiresAt = calculateExpiryIso(newKeyExpiryPreset, newKeyCustomExpiry);
+    const limit5h = parseLimit(newKeyLimit5h);
+    const limit7d = parseLimit(newKeyLimit7d);
+    const limit30d = parseLimit(newKeyLimit30d);
     try {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName.trim(), expiresAt }),
+        body: JSON.stringify({
+          name: newKeyName.trim(),
+          expiresAt,
+          limitMode: newKeyLimitMode,
+          limit5h,
+          limit7d,
+          limit30d,
+        }),
       });
       const data = await res.json();
 
@@ -682,6 +731,10 @@ export default function APIPageClient({ machineId }) {
         setNewKeyName("");
         setNewKeyExpiryPreset("never");
         setNewKeyCustomExpiry("");
+        setNewKeyLimitMode("count");
+        setNewKeyLimit5h("");
+        setNewKeyLimit7d("");
+        setNewKeyLimit30d("");
         setShowAddModal(false);
       }
     } catch (error) {
@@ -699,21 +752,35 @@ export default function APIPageClient({ machineId }) {
       setEditKeyExpiryPreset("custom");
       setEditKeyCustomExpiry(toDatetimeLocal(key.expiresAt));
     }
+    setEditKeyLimitMode(key.limitMode || "count");
+    setEditKeyLimit5h(key.limit5h !== null && key.limit5h !== undefined ? String(key.limit5h) : "");
+    setEditKeyLimit7d(key.limit7d !== null && key.limit7d !== undefined ? String(key.limit7d) : "");
+    setEditKeyLimit30d(key.limit30d !== null && key.limit30d !== undefined ? String(key.limit30d) : "");
   };
 
   const handleUpdateKey = async () => {
     if (!editingKey || !editKeyName.trim()) return;
 
     const expiresAt = calculateExpiryIso(editKeyExpiryPreset, editKeyCustomExpiry);
+    const limit5h = parseLimit(editKeyLimit5h);
+    const limit7d = parseLimit(editKeyLimit7d);
+    const limit30d = parseLimit(editKeyLimit30d);
     try {
       const res = await fetch(`/api/keys/${editingKey.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editKeyName.trim(), expiresAt }),
+        body: JSON.stringify({
+          name: editKeyName.trim(),
+          expiresAt,
+          limitMode: editKeyLimitMode,
+          limit5h,
+          limit7d,
+          limit30d,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.key) {
-        setKeys(prev => prev.map(k => k.id === editingKey.id ? { ...k, name: data.key.name, expiresAt: data.key.expiresAt } : k));
+        setKeys(prev => prev.map(k => k.id === editingKey.id ? { ...k, ...data.key } : k));
         setEditingKey(null);
       }
     } catch (error) {
@@ -1147,6 +1214,10 @@ export default function APIPageClient({ machineId }) {
                         </span>
                       );
                     })()}
+                    <span className="text-text-muted/40">•</span>
+                    <span className="text-text-muted">
+                      {formatLimits(key)}
+                    </span>
                   </div>
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
@@ -1213,6 +1284,10 @@ export default function APIPageClient({ machineId }) {
           setNewKeyName("");
           setNewKeyExpiryPreset("never");
           setNewKeyCustomExpiry("");
+          setNewKeyLimitMode("count");
+          setNewKeyLimit5h("");
+          setNewKeyLimit7d("");
+          setNewKeyLimit30d("");
         }}
       >
         <div className="flex flex-col gap-4">
@@ -1237,6 +1312,46 @@ export default function APIPageClient({ machineId }) {
               required
             />
           )}
+          <Select
+            label="Limit mode"
+            options={LIMIT_MODE_OPTIONS}
+            value={newKeyLimitMode}
+            onChange={(e) => setNewKeyLimitMode(e.target.value)}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Input
+              label={newKeyLimitMode === "spend" ? "5 hours ($)" : "5 hours (requests)"}
+              type="number"
+              min={0}
+              step={newKeyLimitMode === "spend" ? "0.01" : "1"}
+              placeholder="Unlimited"
+              value={newKeyLimit5h}
+              onChange={(e) => setNewKeyLimit5h(e.target.value)}
+            />
+            <Input
+              label={newKeyLimitMode === "spend" ? "7 days ($)" : "7 days (requests)"}
+              type="number"
+              min={0}
+              step={newKeyLimitMode === "spend" ? "0.01" : "1"}
+              placeholder="Unlimited"
+              value={newKeyLimit7d}
+              onChange={(e) => setNewKeyLimit7d(e.target.value)}
+            />
+            <Input
+              label={newKeyLimitMode === "spend" ? "30 days ($)" : "30 days (requests)"}
+              type="number"
+              min={0}
+              step={newKeyLimitMode === "spend" ? "0.01" : "1"}
+              placeholder="Unlimited"
+              value={newKeyLimit30d}
+              onChange={(e) => setNewKeyLimit30d(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-text-muted">
+            {newKeyLimitMode === "spend"
+              ? "Free-tier and unknown-model requests cost $0; use Requests only to cap those."
+              : "Empty = unlimited."}
+          </p>
           <div className="flex gap-2">
             <Button
               onClick={handleCreateKey}
@@ -1251,6 +1366,10 @@ export default function APIPageClient({ machineId }) {
                 setNewKeyName("");
                 setNewKeyExpiryPreset("never");
                 setNewKeyCustomExpiry("");
+                setNewKeyLimitMode("count");
+                setNewKeyLimit5h("");
+                setNewKeyLimit7d("");
+                setNewKeyLimit30d("");
               }}
               variant="ghost"
               fullWidth
@@ -1289,6 +1408,46 @@ export default function APIPageClient({ machineId }) {
               required
             />
           )}
+          <Select
+            label="Limit mode"
+            options={LIMIT_MODE_OPTIONS}
+            value={editKeyLimitMode}
+            onChange={(e) => setEditKeyLimitMode(e.target.value)}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Input
+              label={editKeyLimitMode === "spend" ? "5 hours ($)" : "5 hours (requests)"}
+              type="number"
+              min={0}
+              step={editKeyLimitMode === "spend" ? "0.01" : "1"}
+              placeholder="Unlimited"
+              value={editKeyLimit5h}
+              onChange={(e) => setEditKeyLimit5h(e.target.value)}
+            />
+            <Input
+              label={editKeyLimitMode === "spend" ? "7 days ($)" : "7 days (requests)"}
+              type="number"
+              min={0}
+              step={editKeyLimitMode === "spend" ? "0.01" : "1"}
+              placeholder="Unlimited"
+              value={editKeyLimit7d}
+              onChange={(e) => setEditKeyLimit7d(e.target.value)}
+            />
+            <Input
+              label={editKeyLimitMode === "spend" ? "30 days ($)" : "30 days (requests)"}
+              type="number"
+              min={0}
+              step={editKeyLimitMode === "spend" ? "0.01" : "1"}
+              placeholder="Unlimited"
+              value={editKeyLimit30d}
+              onChange={(e) => setEditKeyLimit30d(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-text-muted">
+            {editKeyLimitMode === "spend"
+              ? "Free-tier and unknown-model requests cost $0; use Requests only to cap those."
+              : "Empty = unlimited."}
+          </p>
           <div className="flex gap-2">
             <Button
               onClick={handleUpdateKey}

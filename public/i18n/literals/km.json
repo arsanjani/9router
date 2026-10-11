@@ -305,6 +305,7 @@
   "Cost": "ចំណាយ",
   "Cost Calculation:": "ការគណនាចំណាយ៖",
   "Costs": "ចំណាយ",
+  "Limits": "ដែនកំណត់",
   "Costs are calculated based on token usage and pricing rates. Each request's cost is determined by: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)": "ចំណាយត្រូវបានគណនាតាមការប្រើ Token និងអត្រាតម្លៃ។ ចំណាយនៃសំណើនីមួយៗកំណត់ដោយ៖ (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)",
   "Could not read Cursor database automatically.": "មិនអាចអានមូលដ្ឋានទិន្នន័យ Cursor ដោយស្វ័យប្រវត្តិបានទេ។",
   "Create": "បង្កើត",

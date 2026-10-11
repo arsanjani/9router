@@ -16,6 +16,7 @@ vi.mock("@/sse/handlers/chat.js", () => ({
 vi.mock("@/sse/services/auth.js", () => ({
   getProviderCredentials: mocks.getProviderCredentials,
   isValidApiKey: mocks.isValidApiKey,
+  checkKeyWindowLimit: vi.fn(async () => null),
   markAccountUnavailable: mocks.markAccountUnavailable,
   clearAccountError: mocks.clearAccountError,
 }));

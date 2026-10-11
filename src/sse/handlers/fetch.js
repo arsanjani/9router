@@ -4,6 +4,7 @@ import {
   clearAccountError,
   extractApiKey,
   isValidApiKey,
+  checkKeyWindowLimit,
 } from "../services/auth.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
@@ -60,6 +61,8 @@ export async function handleFetch(request) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
+    const limitHit = await checkKeyWindowLimit(apiKey);
+    if (limitHit) return errorResponse(HTTP_STATUS.RATE_LIMITED, limitHit);
   }
 
   if (!providerInput || typeof providerInput !== "string") {

@@ -305,6 +305,7 @@
   "Cost": "ค่าใช้จ่าย",
   "Cost Calculation:": "การคำนวณค่าใช้จ่าย:",
   "Costs": "ค่าใช้จ่าย",
+  "Limits": "ขีดจำกัด",
   "Costs are calculated based on token usage and pricing rates. Each request's cost is determined by: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)": "ค่าใช้จ่ายคำนวณจาก token usage และ pricing rates ค่าใช้จ่ายของแต่ละคำขอคำนวณจาก: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)",
   "Could not read Cursor database automatically.": "ไม่สามารถอ่าน Cursor database โดยอัตโนมัติได้",
   "Create": "สร้าง",

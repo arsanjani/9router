@@ -3,6 +3,7 @@ import {
   clearAccountError,
   getProviderCredentials,
   isValidApiKey,
+  checkKeyWindowLimit,
   markAccountUnavailable,
 } from "@/sse/services/auth.js";
 import { getSettings } from "@/lib/localDb";
@@ -190,6 +191,11 @@ async function validateGeminiNativeClientKey(request) {
   const valid = await isValidApiKey(apiKey);
   if (!valid) {
     return Response.json({ error: { message: "Invalid API key" } }, { status: 401 });
+  }
+
+  const limitHit = await checkKeyWindowLimit(apiKey);
+  if (limitHit) {
+    return Response.json({ error: { message: limitHit } }, { status: 429 });
   }
 
   return null;

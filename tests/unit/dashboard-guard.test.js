@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   })),
   getSettings: vi.fn(),
   validateApiKey: vi.fn(),
+  getKeyLimitState: vi.fn(),
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
 }));
@@ -23,6 +24,8 @@ vi.mock("next/server", () => ({
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   validateApiKey: mocks.validateApiKey,
+  getKeyLimitState: mocks.getKeyLimitState,
+  limitStateMessage: () => "API key request limit exceeded (5h: max 1 requests)",
 }));
 
 vi.mock("@/shared/utils/machineId", () => ({
@@ -59,6 +62,7 @@ describe("dashboard guard public LLM API access", () => {
     process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
     mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getKeyLimitState.mockResolvedValue({ ok: true });
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
@@ -214,6 +218,26 @@ describe("dashboard guard public LLM API access", () => {
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
   });
+
+  it("rejects an over-limit remote key with 429 naming the window", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+    mocks.getKeyLimitState.mockResolvedValue({ ok: false, window: "5h", limit: 1, spend: false });
+
+    const response = await proxy(request("/v1/chat/completions", {
+      host: "router.example.com",
+      authorization: "Bearer sk-valid",
+    }));
+
+    expect(response.status).toBe(429);
+    expect(mocks.getKeyLimitState).toHaveBeenCalledWith("sk-valid");
+  });
+
+  it("leaves loopback (non-remote) traffic unmetered at this gate", async () => {
+    const response = await proxy(localRequest("/v1/chat/completions", { host: "localhost:20128" }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.getKeyLimitState).not.toHaveBeenCalled();
+  });
 });
 
 describe("dashboard guard local-only access", () => {
@@ -222,6 +246,7 @@ describe("dashboard guard local-only access", () => {
     process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
     mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getKeyLimitState.mockResolvedValue({ ok: true });
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });

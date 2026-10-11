@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSettings, validateApiKey } from "@/lib/localDb";
+import { getSettings, validateApiKey, getKeyLimitState, limitStateMessage } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
@@ -148,16 +148,22 @@ function extractApiKey(request) {
   return request.nextUrl.searchParams?.get("key") || null;
 }
 
-async function hasValidApiKey(request) {
+/**
+ * Gate for the public LLM API (remote callers only).
+ * @returns {Promise<Response|null>} null to allow, else the deny response.
+ */
+export async function canAccessPublicLlmApi(request) {
+  if (isLocalRequest(request)) return null;
+  if (await hasValidCliToken(request)) return null;
   const apiKey = extractApiKey(request);
-  if (!apiKey) return false;
-  return await validateApiKey(apiKey);
-}
-
-async function canAccessPublicLlmApi(request) {
-  if (isLocalRequest(request)) return true;
-  if (await hasValidCliToken(request)) return true;
-  return await hasValidApiKey(request);
+  if (!apiKey || !(await validateApiKey(apiKey))) {
+    return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
+  }
+  // Window limits apply here too. The handler gate re-checks the same key, so
+  // this only saves the request a trip through provider selection.
+  const state = await getKeyLimitState(apiKey);
+  if (!state.ok) return NextResponse.json({ error: limitStateMessage(state) }, { status: 429 });
+  return null;
 }
 
 async function canAccessLocalOnlyRoute(request) {
@@ -222,8 +228,9 @@ export async function proxy(request) {
   }
 
   if (isPublicLlmApi(pathname)) {
-    if (await canAccessPublicLlmApi(request)) return NextResponse.next();
-    return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
+    const denied = await canAccessPublicLlmApi(request);
+    if (!denied) return NextResponse.next();
+    return denied;
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
