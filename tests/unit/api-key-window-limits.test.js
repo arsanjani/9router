@@ -279,6 +279,7 @@ describe("window-limit enforcement at the key gate", () => {
     expect(state.ok).toBe(false);
     expect(state.window).toBe("5h");
     expect(state.spend).toBe(false);
+    expect(state.used).toBe(2);
 
     const { limitStateMessage } = await import("@/lib/db/repos/apiKeysRepo.js");
     const msg = limitStateMessage(state);
@@ -614,4 +615,113 @@ describe("REST CRUD: mode + window caps", () => {
     expect(singleData.key.limit5h).toBe(5);
   });
 });
+
+describe("window usage helper & GET /api/keys/limits", () => {
+  it("computes used, remaining, and resetAt = oldest request + window length; no usage -> null", async () => {
+    const { db, seed, advanceTime } = await bootGate();
+    const { getKeyWindowUsage, getKeysWindowUsage } = await import("@/lib/db/repos/apiKeysRepo.js");
+
+    const k = await db.createApiKey("metrics-key", "m", null, { limitMode: "count", limit5h: 10, limit7d: 50 });
+
+    // Initial state: 0 used, remaining = limit, resetAt = null
+    const initial = await getKeyWindowUsage(k.key);
+    expect(initial.limitMode).toBe("count");
+    expect(initial.windows).toHaveLength(2);
+    expect(initial.windows[0]).toEqual({
+      window: "5h",
+      limit: 10,
+      used: 0,
+      remaining: 10,
+      resetAt: null,
+    });
+    expect(initial.windows[1]).toEqual({
+      window: "7d",
+      limit: 50,
+      used: 0,
+      remaining: 50,
+      resetAt: null,
+    });
+
+    // Seed 1 request 2 hours ago
+    const twoHoursMs = 2 * 3600 * 1000;
+    seed(k.key, { count: 1, ageMs: twoHoursMs });
+    const oldestReqTs = new Date(Date.now() - twoHoursMs).toISOString();
+
+    const withOne = await getKeyWindowUsage(k.key);
+    expect(withOne.windows[0].used).toBe(1);
+    expect(withOne.windows[0].remaining).toBe(9);
+    // resetAt = oldest request + 5h
+    const expectedReset5h = new Date(new Date(oldestReqTs).getTime() + 5 * 3600 * 1000).toISOString();
+    expect(withOne.windows[0].resetAt).toBe(expectedReset5h);
+
+    // Seed a second request 1 hour ago
+    seed(k.key, { count: 1, ageMs: 1 * 3600 * 1000 });
+    const withTwo = await getKeyWindowUsage(k); // works passing row object too
+    expect(withTwo.windows[0].used).toBe(2);
+    expect(withTwo.windows[0].remaining).toBe(8);
+    // Oldest is still the request from 2 hours ago
+    expect(withTwo.windows[0].resetAt).toBe(expectedReset5h);
+
+    // Advance time past the 5h window of the oldest request
+    advanceTime(3.5 * 3600 * 1000); // 2h + 3.5h = 5.5h since first request, 4.5h since second
+    const afterSlide = await getKeyWindowUsage(k.key);
+    expect(afterSlide.windows[0].used).toBe(1); // first fell out
+    expect(afterSlide.windows[0].remaining).toBe(9);
+    // New resetAt is now based on the second request
+    const secondReqTs = new Date(Date.now() - (1 * 3600 * 1000 + 3.5 * 3600 * 1000)).toISOString();
+    const expectedResetNew = new Date(new Date(secondReqTs).getTime() + 5 * 3600 * 1000).toISOString();
+    expect(afterSlide.windows[0].resetAt).toBe(expectedResetNew);
+
+    // getKeysWindowUsage(k) returns same
+    const viaKeysHelper = await getKeysWindowUsage(k);
+    expect(viaKeysHelper.windows[0].used).toBe(1);
+  });
+
+  it("handles spend mode with float precision and unlimited keys with empty windows", async () => {
+    const { db, seed } = await bootGate();
+    const { getKeyWindowUsage } = await import("@/lib/db/repos/apiKeysRepo.js");
+
+    const spendKey = await db.createApiKey("spend-metrics", "m", null, { limitMode: "spend", limit7d: 5.5 });
+    seed(spendKey.key, { count: 1, cost: 1.25 });
+
+    const spendUsage = await getKeyWindowUsage(spendKey.key);
+    expect(spendUsage.limitMode).toBe("spend");
+    expect(spendUsage.windows).toHaveLength(1);
+    expect(spendUsage.windows[0].limit).toBe(5.5);
+    expect(spendUsage.windows[0].used).toBeCloseTo(1.25, 4);
+    expect(spendUsage.windows[0].remaining).toBeCloseTo(4.25, 4);
+    expect(spendUsage.windows[0].resetAt).not.toBeNull();
+
+    const unlimitedKey = await db.createApiKey("unlimited-metrics", "m");
+    const unlUsage = await getKeyWindowUsage(unlimitedKey.key);
+    expect(unlUsage.windows).toEqual([]);
+  });
+
+  it("GET /api/keys/limits returns key limits array, never exposes raw keys, and fails open", async () => {
+    writeV2Db(tempDir);
+    resetAdapter();
+    const db = await import("@/lib/db/index.js");
+    const { GET } = await import("@/app/api/keys/limits/route.js");
+
+    await db.createApiKey("Key 1", "m", null, { limitMode: "count", limit5h: 10 });
+    await db.createApiKey("Key 2", "m", null, { limitMode: "spend", limit30d: 100 });
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(2);
+
+    for (const item of data) {
+      expect(item).toHaveProperty("id");
+      expect(item).toHaveProperty("name");
+      expect(item).toHaveProperty("limitMode");
+      expect(item).toHaveProperty("windows");
+      // NEVER expose raw key values
+      expect(item).not.toHaveProperty("key");
+      expect(JSON.stringify(item)).not.toMatch(/sk-/);
+    }
+  });
+});
+
 

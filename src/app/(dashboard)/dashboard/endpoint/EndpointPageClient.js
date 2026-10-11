@@ -1262,7 +1262,7 @@ export default function APIPageClient({ machineId }) {
           </div>
           <p className="text-xs text-text-muted">
             {newKeyLimitMode === "spend"
-              ? "Typical request ≈ $0.004 (Sonnet) — e.g. $5/7d ≈ 1,250 typical requests. Free-tier and unknown-model requests cost $0; use Requests only to cap those."
+              ? "Free-tier and unknown-model requests cost $0; use Requests only to cap those."
               : "Empty = unlimited."}
           </p>
           <div className="flex gap-2">
@@ -1337,7 +1337,7 @@ export default function APIPageClient({ machineId }) {
           </div>
           <p className="text-xs text-text-muted">
             {editKeyLimitMode === "spend"
-              ? "Typical request ≈ $0.004 (Sonnet) — e.g. $5/7d ≈ 1,250 typical requests. Free-tier and unknown-model requests cost $0; use Requests only to cap those."
+              ? "Free-tier and unknown-model requests cost $0; use Requests only to cap those."
               : "Empty = unlimited."}
           </p>
           <div className="flex gap-2">

@@ -353,6 +353,15 @@ export async function sumKeySpendSince(apiKey, sinceIso) {
   return row ? row.s : 0;
 }
 
+export async function oldestKeyTimestampSince(apiKey, sinceIso) {
+  const db = await getAdapter();
+  const row = db.get(
+    `SELECT MIN(timestamp) AS minTs FROM usageHistory WHERE apiKey = ? AND timestamp > ?`,
+    [apiKey, sinceIso]
+  );
+  return row?.minTs || null;
+}
+
 function loadDaysInRange(adapter, maxDays) {
   if (maxDays == null) {
     return adapter.all(`SELECT dateKey, data FROM usageDaily ORDER BY dateKey ASC`);

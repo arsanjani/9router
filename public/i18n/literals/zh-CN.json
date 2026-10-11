@@ -306,6 +306,7 @@
   "Cost": "成本",
   "Cost Calculation:": "成本计算：",
   "Costs": "成本",
+  "Limits": "限制",
   "Costs are calculated based on token usage and pricing rates. Each request's cost is determined by: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)": "成本根据 Token 用量和费率计算。每个请求的成本由以下公式决定：(input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)",
   "Could not read Cursor database automatically.": "无法自动读取 Cursor 数据库。",
   "Create": "创建",

@@ -14,6 +14,7 @@ import Badge from "./Badge";
 import Card from "./Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
 import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/components/UsageTable";
+import QuotaTable from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable";
 import dynamic from "next/dynamic";
 // Lazy-load: keeps @xyflow/react and recharts out of the initial bundle
 const ProviderTopology = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderTopology"), { ssr: false });
@@ -215,6 +216,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const [fetching, setFetching] = useState(false);
   const [tableView, setTableView] = useState("model");
   const [viewMode, setViewMode] = useState("costs");
+  const [keyLimits, setKeyLimits] = useState(null);
+  const [refreshingKeyLimits, setRefreshingKeyLimits] = useState(false);
   const [providers, setProviders] = useState([]);
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
@@ -279,6 +282,37 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         setFetching(false);
       });
   }, [period]);
+
+  const fetchKeyLimits = useCallback(() => {
+    setRefreshingKeyLimits(true);
+    fetch("/api/keys/limits")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        setKeyLimits(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        setKeyLimits([]);
+      })
+      .finally(() => {
+        setRefreshingKeyLimits(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (tableView !== "apiKey" || viewMode !== "limits" || keyLimits !== null) return;
+    let cancelled = false;
+    fetch("/api/keys/limits")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancelled) setKeyLimits(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setKeyLimits([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tableView, viewMode, keyLimits]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
   useEffect(() => {
@@ -498,17 +532,40 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <select
-            value={tableView}
-            onChange={(e) => setTableView(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
-            style={{ colorScheme: 'auto' }}
-          >
-            {TABLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <div className="grid grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <select
+              value={tableView}
+              onChange={(e) => {
+                const val = e.target.value;
+                setTableView(val);
+                if (val !== "apiKey" && viewMode === "limits") {
+                  setViewMode("costs");
+                }
+              }}
+              className="h-8 flex-1 sm:flex-initial rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
+              style={{ colorScheme: 'auto' }}
+            >
+              {TABLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            {tableView === "apiKey" && viewMode === "limits" && (
+              <button
+                type="button"
+                onClick={fetchKeyLimits}
+                disabled={refreshingKeyLimits}
+                className="flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-border bg-surface px-2.5 text-xs font-medium text-text-main transition-colors hover:bg-surface-2 disabled:opacity-50"
+                title="Refresh quotas"
+                aria-label="Refresh quotas"
+              >
+                <span className={`material-symbols-outlined text-[16px] ${refreshingKeyLimits ? "animate-spin" : ""}`}>
+                  refresh
+                </span>
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            )}
+          </div>
+          <div className={`grid ${tableView === "apiKey" ? "grid-cols-3" : "grid-cols-2"} items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex`}>
             <button
               onClick={() => setViewMode("costs")}
               className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "costs" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
@@ -521,9 +578,50 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             >
               Tokens
             </button>
+            {tableView === "apiKey" && (
+              <button
+                onClick={() => setViewMode("limits")}
+                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "limits" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
+              >
+                Limits
+              </button>
+            )}
           </div>
         </div>
-        {loading ? spinner : activeTableConfig && (
+        {loading || (tableView === "apiKey" && viewMode === "limits" && keyLimits === null) ? (
+          spinner
+        ) : tableView === "apiKey" && viewMode === "limits" ? (
+          !keyLimits || keyLimits.length === 0 ? (
+            <div className="text-text-muted py-8 text-center text-sm">No API keys found.</div>
+          ) : (
+            <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4">
+              {keyLimits.map((k) => {
+                const validWindows = (k.windows || []).filter((w) => w.limit != null);
+                const quotas = validWindows.length > 0
+                  ? validWindows.map((w) => ({
+                      name: w.window,
+                      used: w.used,
+                      total: w.limit,
+                      resetAt: w.resetAt,
+                    }))
+                  : [{ name: "Unlimited", used: 0, total: 0, unlimited: true, resetAt: null }];
+                return (
+                  <Card key={k.id} padding="sm" className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between pb-2 border-b border-border">
+                      <span className="font-medium text-sm text-text-primary truncate" title={k.name}>
+                        {k.name || "API Key"}
+                      </span>
+                      <Badge variant="neutral" size="sm">
+                        {k.limitMode === "spend" ? "Spend" : "Requests"}
+                      </Badge>
+                    </div>
+                    <QuotaTable quotas={quotas} compact />
+                  </Card>
+                );
+              })}
+            </div>
+          )
+        ) : activeTableConfig && (
           <UsageTable
             title=""
             columns={activeTableConfig.columns}

@@ -305,6 +305,7 @@
   "Cost": "هزینه",
   "Cost Calculation:": "محاسبه هزینه:",
   "Costs": "هزینه‌ها",
+  "Limits": "محدودیت‌ها",
   "Costs are calculated based on token usage and pricing rates. Each request's cost is determined by: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)": "هزینه‌ها بر اساس مصرف توکن و نرخ‌های قیمت‌گذاری محاسبه می‌شوند. هزینه هر درخواست با فرمول زیر تعیین می‌شود: (توکن‌های ورودی × نرخ ورودی) + (توکن‌های خروجی × نرخ خروجی) + (توکن‌های ذخیره شده × نرخ ذخیره شده)",
   "Could not read Cursor database automatically.": "امکان خواندن خودکار پایگاه داده Cursor وجود ندارد.",
   "Create": "ایجاد",
