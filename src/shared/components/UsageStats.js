@@ -554,14 +554,14 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
                 type="button"
                 onClick={fetchKeyLimits}
                 disabled={refreshingKeyLimits}
-                className="flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-border bg-surface px-2.5 text-xs font-medium text-text-main transition-colors hover:bg-surface-2 disabled:opacity-50"
-                title="Refresh quotas"
+                className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs text-text-primary transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5 disabled:opacity-50"
                 aria-label="Refresh quotas"
               >
-                <span className={`material-symbols-outlined text-[16px] ${refreshingKeyLimits ? "animate-spin" : ""}`}>
+                <span
+                  className={`material-symbols-outlined text-[14px] ${refreshingKeyLimits ? "animate-spin" : ""}`}
+                >
                   refresh
                 </span>
-                <span className="hidden sm:inline">Refresh</span>
               </button>
             )}
           </div>
