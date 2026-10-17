@@ -15,32 +15,56 @@ async function getUserPricing() {
   return await pricingKv.getAll();
 }
 
+export function getCanonicalProvider(modelId) {
+  if (!modelId) return "misc";
+  const lower = String(modelId).toLowerCase();
+  if (lower.startsWith("claude-")) return "anthropic";
+  if (lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("o4")) return "openai";
+  if (lower.startsWith("gemini-")) return "gemini";
+  if (lower.startsWith("deepseek-")) return "deepseek";
+  if (lower.startsWith("qwen")) return "qwen";
+  if (lower.startsWith("kimi-") || lower === "k3") return "kimi";
+  if (lower.startsWith("glm-")) return "glm";
+  if (lower.startsWith("minimax-")) return "minimax";
+  if (lower.startsWith("grok-")) return "xai";
+  if (lower.startsWith("muse-")) return "muse";
+  if (lower === "auto") return "openrouter";
+  if (lower.includes("/")) return lower.split("/")[0];
+  return "misc";
+}
+
 export async function getPricing() {
   const now = Date.now();
   if (cache.value && cache.expiresAt > now) return cache.value;
 
   const userPricing = await getUserPricing();
-  const { PROVIDER_PRICING } = await import("open-sse/providers/pricing.js");
+  const { PROVIDER_PRICING, MODEL_PRICING } = await import("open-sse/providers/pricing.js");
   const merged = {};
 
-  for (const [provider, models] of Object.entries(PROVIDER_PRICING)) {
-    merged[provider] = { ...models };
-    if (userPricing[provider]) {
-      for (const [model, pricing] of Object.entries(userPricing[provider])) {
-        merged[provider][model] = merged[provider][model]
-          ? { ...merged[provider][model], ...pricing }
-          : pricing;
-      }
+  // 1. Canonical models grouped by canonical provider (gemini, anthropic, openai, etc.)
+  if (MODEL_PRICING) {
+    for (const [model, pricing] of Object.entries(MODEL_PRICING)) {
+      const provider = getCanonicalProvider(model);
+      merged[provider] ||= {};
+      merged[provider][model] = { ...pricing };
     }
   }
 
-  for (const [provider, models] of Object.entries(userPricing)) {
-    if (!merged[provider]) {
-      merged[provider] = { ...models };
-    } else {
-      for (const [model, pricing] of Object.entries(models)) {
-        if (!merged[provider][model]) merged[provider][model] = pricing;
-      }
+  // 2. Provider-specific overrides (e.g. gh, tokenrouter)
+  for (const [provider, models] of Object.entries(PROVIDER_PRICING || {})) {
+    merged[provider] ||= {};
+    for (const [model, pricing] of Object.entries(models)) {
+      merged[provider][model] = { ...pricing };
+    }
+  }
+
+  // 3. User pricing overlays
+  for (const [provider, models] of Object.entries(userPricing || {})) {
+    merged[provider] ||= {};
+    for (const [model, pricing] of Object.entries(models)) {
+      merged[provider][model] = merged[provider][model]
+        ? { ...merged[provider][model], ...pricing }
+        : pricing;
     }
   }
 
@@ -52,6 +76,13 @@ export async function getPricingForModel(provider, model) {
   if (!model) return null;
   const userPricing = await getUserPricing();
   if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
+
+  const canonical = getCanonicalProvider(model);
+  if (canonical && userPricing[canonical]?.[model]) return userPricing[canonical][model];
+  if (userPricing["global"]?.[model] || userPricing["*"]?.[model]) {
+    return userPricing["global"]?.[model] || userPricing["*"]?.[model];
+  }
+
   const { getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
   return resolveConst(provider, model);
 }
